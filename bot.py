@@ -15,7 +15,6 @@ webhook = 'https://b24-2n1ca2.bitrix24.ru/rest/1/1048j59oitcrt3k2/'  # вебх�
 bitrix = Bitrix(webhook)
 
 
-
 class UserState(StatesGroup):
     inn = State()
     number = State()
@@ -23,65 +22,64 @@ class UserState(StatesGroup):
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-
-    await message.answer("Введите ИНН")
     await UserState.inn.set()
+    await message.answer("Введите ИНН")
 
 
 @dp.message_handler(state=UserState.inn)
 async def inn_register(message: types.Message, state: FSMContext):
-    await state.update_data(inn=message.text)
-    await message.answer("Введите реквизиты")
-    await UserState.next()
+    async with state.proxy() as data:
+        data['inn'] = message.text
+        await UserState.next()
+        await message.answer("Введите реквизиты")
 
 
 @dp.message_handler(state=UserState.number)
 async def number_register(message: types.Message, state: FSMContext):
-    await state.update_data(number=message.text)
-    data = await state.get_data()
-    await message.answer(f"ИНН: {data['inn']}\n"
-                         f"Реквизиты: {data['number']}")
+    async with state.proxy() as data:
+        data['number'] = message.text
+        await message.answer(f"ИНН: {data['inn']}\n"
+                             f"Реквизиты: {data['number']}")
+        await send_bitrix(dict(data))
+        await state.finish()
 
-    await state.finish()
 
+def send_bitrix(info: dict):
+    fields = {'fields':
+            {
+                "TITLE": "Тестовая сделка",
+                "TYPE_ID": "GOODS",
+                "STAGE_ID": "NEW",
+                "COMPANY_ID": 3,
+                "CONTACT_ID": 3,
+                "OPENED": "Y",
+                "ASSIGNED_BY_ID": 1,
+                "PROBABILITY": 30,
+                "CURRENCY_ID": "USD",
+                "OPPORTUNITY": 5000,
+                "CATEGORY_ID": 5,
+            }}
 
-fields = {'fields':
-        {
-            "TITLE": "Тестовая сделка",
-            "TYPE_ID": "GOODS",
-            "STAGE_ID": "NEW",
-            "COMPANY_ID": 3,
-            "CONTACT_ID": 3,
-            "OPENED": "Y",
-            "ASSIGNED_BY_ID": 1,
-            "PROBABILITY": 30,
-            "CURRENCY_ID": "USD",
-            "OPPORTUNITY": 5000,
-            "CATEGORY_ID": 5,
-        }}
+    bitrix.call('crm.deal.add', fields)
 
-bitrix.call('crm.deal.add', fields)
+    deals = bitrix.get_all(
+            'crm.deal.list',
+            params={
+                'select': ['*', 'UF_*'],
+                'filter': {'CLOSED': 'N'}
+        })
 
-deals = bitrix.get_all(
-        'crm.deal.list',
-        params={
-            'select': ['*', 'UF_*'],
-            'filter': {'CLOSED': 'N'}
-    })
-
-tasks = [
-        {
-    'ID': d['ID'],
-    'fields': {
-    'UF_CRM_1662804274348': a,
-    'UF_CRM_1662804286991': number
-
+    tasks = [
+            {
+        'ID': d['ID'],
+        'fields': {
+            'UF_CRM_1662804274348': info['inn'],
+            'UF_CRM_1662804286991': info['number']
+                }
         }
-    }
-    for d in deals
-]
-
-bitrix.call('crm.deal.update', tasks)
+        for d in deals
+    ]
+    bitrix.call('crm.deal.update', tasks)
 
 
 if __name__ == '__main__':
