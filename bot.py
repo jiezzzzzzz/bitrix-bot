@@ -5,7 +5,7 @@ from aiogram.utils import executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from fast_bitrix24 import Bitrix
 import os
-
+import sqlite3
 
 
 storage = MemoryStorage()
@@ -18,11 +18,8 @@ bitrix = Bitrix(webhook)
 class UserState(StatesGroup):
     inn = State()
     number = State()
-    inn2 = None
-    number2 = None
-info = {}
-a = 0
-b = 0
+
+
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await UserState.inn.set()
@@ -31,63 +28,55 @@ async def start(message: types.Message):
 
 @dp.message_handler(state=UserState.inn)
 async def inn_register(message: types.Message, state: FSMContext):
-    global a
-    async with state.proxy() as info:
-        info['inn'] = message.text
-        a = info['inn']
+    async with state.proxy() as data:
+        data['inn'] = message.text
         await UserState.next()
         await message.answer("Введите реквизиты")
 
 
 @dp.message_handler(state=UserState.number)
 async def number_register(message: types.Message, state: FSMContext):
-    async with state.proxy() as info:
-        info['number'] = message.text
-
-        await message.answer(f"ИНН: {info}\n"
-                             f"Реквизиты: {info['number']}")
-
-
+    async with state.proxy() as data:
+        data['number'] = message.text
+        await message.answer(f"ИНН: {data['inn']}\n"
+                             f"Реквизиты: {data['number']}")
+        send_bitrix(dict(data))
         await state.finish()
 
 
-        fields = {'fields':
-            {
-                "TITLE": "Тестовая сделка",
-                "TYPE_ID": "GOODS",
-                "STAGE_ID": "NEW",
-                "COMPANY_ID": 3,
-                "CONTACT_ID": 3,
-                "OPENED": "Y",
-                "ASSIGNED_BY_ID": 1,
-                "PROBABILITY": 30,
-                "CURRENCY_ID": "USD",
-                "OPPORTUNITY": 5000,
-                "CATEGORY_ID": 5,
-            }}
+def send_bitrix(info: dict):
+    tasks = [{
+        'ID': d['ID'],
+        'fields': {
+            'UF_CRM_1662804274348': info['inn'],
+            'UF_CRM_1662841499205': info['number']}}
+        for d in deals]
 
-        bitrix.call('crm.deal.add', fields)
+    bitrix.call('crm.deal.update', tasks)
 
-        deals = bitrix.get_all(
-            'crm.deal.list',
-            params={
-                'select': ['*', 'UF_*'],
-                'filter': {'CLOSED': 'N'}
-            })
+fields = {'fields':
+    {
+        "TITLE": "Тестовая сделка",
+        "TYPE_ID": "GOODS",
+        "STAGE_ID": "NEW",
+        "COMPANY_ID": 3,
+        "CONTACT_ID": 3,
+        "OPENED": "Y",
+        "ASSIGNED_BY_ID": 1,
+        "PROBABILITY": 30,
+        "CURRENCY_ID": "USD",
+        "OPPORTUNITY": 5000,
+        "CATEGORY_ID": 5,
+    }}
 
-        tasks = [
-            {
-                'ID': d['ID'],
-                'fields': {
-                    'UF_CRM_1662804274348': info['inn'],
-                    'UF_CRM_1662841499205': info['number']
-                }
-            }
-            for d in deals
-        ]
-        bitrix.call('crm.deal.update', tasks)
+bitrix.call('crm.deal.add', fields)
 
-
+deals = bitrix.get_all(
+    'crm.deal.list',
+    params={
+        'select': ['*', 'UF_*'],
+        'filter': {'CLOSED': 'N'}
+    })
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
