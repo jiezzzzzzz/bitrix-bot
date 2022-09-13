@@ -5,7 +5,7 @@ from aiogram.utils import executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from fast_bitrix24 import Bitrix
 import os
-import sqlite3
+
 
 
 storage = MemoryStorage()
@@ -31,7 +31,8 @@ async def start(message: types.Message):
 
 @dp.message_handler(state=UserState.inn)
 async def inn_register(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
+    global a
+    async with state.proxy() as info:
         info['inn'] = message.text
         a = info['inn']
         await UserState.next()
@@ -40,7 +41,7 @@ async def inn_register(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=UserState.number)
 async def number_register(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
+    async with state.proxy() as info:
         info['number'] = message.text
 
         await message.answer(f"ИНН: {info}\n"
@@ -50,7 +51,7 @@ async def number_register(message: types.Message, state: FSMContext):
         await state.finish()
 
 
-fields = {'fields':
+        fields = {'fields':
             {
                 "TITLE": "Тестовая сделка",
                 "TYPE_ID": "GOODS",
@@ -65,16 +66,16 @@ fields = {'fields':
                 "CATEGORY_ID": 5,
             }}
 
-bitrix.call('crm.deal.add', fields)
+        bitrix.call('crm.deal.add', fields)
 
-deals = bitrix.get_all(
+        deals = bitrix.get_all(
             'crm.deal.list',
             params={
                 'select': ['*', 'UF_*'],
                 'filter': {'CLOSED': 'N'}
             })
 
-tasks = [
+        tasks = [
             {
                 'ID': d['ID'],
                 'fields': {
@@ -82,12 +83,9 @@ tasks = [
                     'UF_CRM_1662841499205': info['number']
                 }
             }
-    for d in deals
+            for d in deals
         ]
-bitrix.call('crm.deal.update', tasks)
-
-
-
+        bitrix.call('crm.deal.update', tasks)
 
 
 
